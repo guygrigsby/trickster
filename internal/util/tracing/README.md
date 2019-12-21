@@ -2,16 +2,19 @@
 
 Initial support for tracing will be implemented with [OpenTelemetry](https://opentelemetry.io). What follows is an RFC for community review.
 
-## Considerations (aka RFC)
+### Considerations
 
-#### Trace Context.
+#### Interface 
+
+For good reason, it has been suggested that we interface the internal tracing. Rather than use a custom adapter for use with various tracing frameworks, I suggest we start with OpenTelemetry and adapt other frameworks to fit its interface. 
+
+#### Trace Context
 
 There appears to be two different commonly used http trace propagation contexts. In this context, propogation refers to the http headers.
 
  - WC3 https://www.w3.org/TR/trace-context-1/#traceparent-header
  - OpenZipkin https://github.com/openzipkin/b3-propagation
 
-The recommendation for Trickster is that we support both. WC3 is widely recognized and a search of 
+*Recommendation*
 
-
-#### 
+Support both
