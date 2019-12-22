@@ -9,12 +9,12 @@ import (
 // SetStdOutTracer set a std out only tracer
 // It serves as a fallback and was created referencing
 // https://github.com/open-telemetry/opentelemetry-go#quick-start
-func setStdOutTracer() error {
+func setStdOutTracer() (func(), error) {
 	// Create stdout exporter to be able to retrieve
 	// the collected spans.
 	exporter, err := stdout.NewExporter(stdout.Options{PrettyPrint: true})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// For the demonstration, use sdktrace.AlwaysSample sampler to sample all traces.
@@ -22,8 +22,8 @@ func setStdOutTracer() error {
 	tp, err := sdktrace.NewProvider(sdktrace.WithConfig(sdktrace.Config{DefaultSampler: sdktrace.AlwaysSample()}),
 		sdktrace.WithSyncer(exporter))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	global.SetTraceProvider(tp)
-	return nil
+	return func() {}, nil
 }

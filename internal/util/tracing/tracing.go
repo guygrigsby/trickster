@@ -15,10 +15,11 @@ package tracing
 
 import (
 	"context"
-	"fmt"
 	"net/http"
+	"sync"
 
-	"github.com/Comcast/trickster/internal/runtime"
+	"github.com/Comcast/trickster/internal/config"
+	"github.com/Comcast/trickster/internal/util/log"
 	"go.opentelemetry.io/otel/api/core"
 	"go.opentelemetry.io/otel/api/distributedcontext"
 	"go.opentelemetry.io/otel/api/global"
@@ -29,11 +30,12 @@ import (
 const (
 	MiddlewareSpanName = "trickster-middleware-span"
 	RequestIDKey       = "trickster-internal-id"
+	ServiceName        = "trickster"
 )
 
 const (
 	// Trace implementation enum
-	StdTracerImplementation TracerImplementation = iota
+	StdoutTracerImplementation TracerImplementation = iota
 
 	// New Implemetations go here
 
@@ -42,39 +44,79 @@ const (
 
 type TracerImplementation int
 
-func (t TracerImplementation) String() string {
-	names := []string{
-		"Jaeger",
-		"StdOut",
+var (
+	tracerImplemetationStrings = []string{
+		"stdout",
+		"jaeger",
 	}
-	if t < StdTracerImplementation || t > JaegerTracer {
-		return "unknown-tracer"
+	TracerImplementations = map[string]TracerImplementation{
+
+		tracerImplemetationStrings[StdoutTracerImplementation]: StdoutTracerImplementation,
+		tracerImplemetationStrings[JaegerTracer]:               JaegerTracer,
 	}
-	return names[t]
+
+	once sync.Once
+
+	tracerName string //TODO this is dirty. Make it better
+
+)
+
+// Init initializes tracing
+func Init(cfg *config.TracingConfig) func() {
+	log.Debug(
+		"Trace Init",
+		log.Pairs{
+			"Implementation": cfg.Implementation,
+			"Collector":      cfg.CollectorEndpoint,
+			"Type":           TracerImplementations[cfg.Implementation],
+		},
+	)
+	var flusher func()
+	f := func() {
+		fl, err := SetTracer(
+			TracerImplementations[cfg.Implementation],
+			cfg.CollectorEndpoint,
+		)
+		if err != nil {
+			log.Error(
+				"Cannot initialize tracing",
+				log.Pairs{
+					"Error":     err,
+					"Tracer":    cfg.Implementation,
+					"Collector": cfg.CollectorEndpoint,
+				},
+			)
+		}
+		flusher = fl
+
+	}
+	once.Do(f)
+	return flusher
 }
 
-func SetTracer(t TracerImplementation) error {
+func (t TracerImplementation) String() string {
+	if t < StdoutTracerImplementation || t > JaegerTracer {
+		return "unknown-tracer"
+	}
+	return tracerImplemetationStrings[t]
+}
+
+func SetTracer(t TracerImplementation, collectorURL string) (func(), error) {
 
 	switch t {
-	case StdTracerImplementation:
+	case StdoutTracerImplementation:
+
 		return setStdOutTracer()
 	case JaegerTracer:
-		return setJaegerTracer()
+
+		return setJaegerTracer(collectorURL)
 	default:
 
 		return setStdOutTracer()
 	}
 
 }
-
-// Name returns the tracer name for this application
-func Name() string {
-	return fmt.Sprintf("%s/%s", runtime.ApplicationName, runtime.ApplicationVersion)
-
-}
-
-func SpanFromContext(ctx context.Context, spanName string) (context.Context, trace.Span) {
-	tracerName := ctx.Value(tracerCtxKey).(string)
+func SpanFromContext(ctx context.Context, tracerName string, spanName string) (context.Context, trace.Span) {
 	tr := global.TraceProvider().Tracer(tracerName)
 
 	attrs := ctx.Value(attrKey).([]core.KeyValue)
@@ -89,7 +131,7 @@ func SpanFromContext(ctx context.Context, spanName string) (context.Context, tra
 	return ctx, span
 
 }
-func PrepareRequest(r *http.Request, tracerName string, spanName string) (*http.Request, trace.Span) {
+func PrepareRequest(r *http.Request, spanName string) (*http.Request, trace.Span) {
 
 	attrs, entries, spanCtx := httptrace.Extract(r.Context(), r)
 
@@ -104,7 +146,6 @@ func PrepareRequest(r *http.Request, tracerName string, spanName string) (*http.
 
 	ctx = context.WithValue(ctx, attrKey, attrs)
 	ctx = context.WithValue(ctx, spanCtxKey, spanCtx)
-	ctx = context.WithValue(ctx, tracerCtxKey, tracerName)
 
 	tr := global.TraceProvider().Tracer(tracerName)
 
@@ -120,10 +161,8 @@ func PrepareRequest(r *http.Request, tracerName string, spanName string) (*http.
 
 type ctxSpanType struct{}
 type ctxAttrType struct{}
-type tracerCtxType struct{}
 
 var (
-	attrKey      = ctxAttrType{}
-	spanCtxKey   = &ctxSpanType{}
-	tracerCtxKey = &tracerCtxType{}
+	attrKey    = ctxAttrType{}
+	spanCtxKey = &ctxSpanType{}
 )

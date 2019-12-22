@@ -334,8 +334,8 @@ type MetricsConfig struct {
 
 // Tracing provides the distributed tracing configuration
 type TracingConfig struct {
-	// Implementation is the particular implementation to use
-	Implementation string `toml:"tracer_implemetation"`
+	// Implementation is the particular implementation to use TODO generate with Rob Pike's Stringer
+	Implementation string `toml:"tracer_implementation"`
 	// CollectorEndpoint is the URL of the trace collector it MUST be of Implementation implementation
 	CollectorEndpoint string `toml:"tracing_collector"`
 }
@@ -368,6 +368,10 @@ func NewConfig() *TricksterConfig {
 		},
 		Metrics: &MetricsConfig{
 			ListenPort: defaultMetricsListenPort,
+		},
+		Tracing: &TracingConfig{
+			Implementation:    defaultTracerImplemetation,
+			CollectorEndpoint: "",
 		},
 		Origins: map[string]*OriginConfig{
 			"default": NewOriginConfig(),
@@ -811,6 +815,9 @@ func (c *TricksterConfig) copy() *TricksterConfig {
 
 	nc.Metrics.ListenAddress = c.Metrics.ListenAddress
 	nc.Metrics.ListenPort = c.Metrics.ListenPort
+
+	nc.Tracing.Implementation = c.Tracing.Implementation
+	nc.Tracing.CollectorEndpoint = c.Tracing.CollectorEndpoint
 
 	nc.Frontend.ListenAddress = c.Frontend.ListenAddress
 	nc.Frontend.ListenPort = c.Frontend.ListenPort

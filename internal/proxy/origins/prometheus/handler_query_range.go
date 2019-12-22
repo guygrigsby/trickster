@@ -15,13 +15,29 @@ package prometheus
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/Comcast/trickster/internal/proxy/engines"
 	"github.com/Comcast/trickster/internal/proxy/model"
+	"github.com/Comcast/trickster/internal/util/tracing"
+	"go.opentelemetry.io/otel/api/trace"
 )
 
 // QueryRangeHandler handles timeseries requests for Prometheus and processes them through the delta proxy cache
 func (c *Client) QueryRangeHandler(w http.ResponseWriter, r *http.Request) {
+
+	ctx, span := tracing.SpanFromContext(r.Context(), "PrometheusClient", "DeltaProxyCacheRequest")
+	span.AddEventWithTimestamp(
+		ctx,
+		time.Now(),
+		"Proxying request",
+	)
+	defer func() {
+
+		then := time.Now()
+		span.End(trace.WithEndTime(then))
+	}()
+
 	u := c.BuildUpstreamURL(r)
 	engines.DeltaProxyCacheRequest(
 		model.NewRequest("QueryRangeHandler", r.Method, u, r.Header, c.config.Timeout, r, c.webClient),

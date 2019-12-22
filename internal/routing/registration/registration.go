@@ -136,7 +136,9 @@ func registerOriginRoutes(k string, o *config.OriginConfig) error {
 func registerPathRoutes(handlers map[string]http.Handler, o *config.OriginConfig, c cache.Cache,
 	paths map[string]*config.PathConfig) {
 
-	routing.Router.Use(middleware.Trace("trickster-tracer-name"))
+	routing.Router.Use(
+		middleware.Trace(o.Name, o.OriginType),
+	)
 
 	decorate := func(p *config.PathConfig) http.Handler {
 		// Add Origin, Cache, and Path Configs to the HTTP Request's context

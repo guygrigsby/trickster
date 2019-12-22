@@ -23,6 +23,7 @@ require (
 	github.com/tinylib/msgp v1.1.0
 	github.com/yuin/gopher-lua v0.0.0-20190514113301-1cd887cd7036 // indirect
 	go.opentelemetry.io/otel v0.2.0
+	go.opentelemetry.io/otel/exporter/trace/jaeger v0.2.0
 	golang.org/x/net v0.0.0-20191021124707-24d2ffbea1e8
 	golang.org/x/sys v0.0.0-20191020212454-3e7259c5e7c2
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
