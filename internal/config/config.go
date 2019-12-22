@@ -45,6 +45,9 @@ var Logging *LoggingConfig
 // Metrics is the Metrics subsection of the Running Configuration
 var Metrics *MetricsConfig
 
+// Tracing defines destricbuted trace options for the Running Configuration
+var Tracing *TracingConfig
+
 // NegativeCacheConfigs is the NegativeCacheConfig subsection of the Running Configuration
 var NegativeCacheConfigs map[string]NegativeCacheConfig
 
@@ -71,6 +74,8 @@ type TricksterConfig struct {
 	Logging *LoggingConfig `toml:"logging"`
 	// Metrics provides configurations for collecting Metrics about the application
 	Metrics *MetricsConfig `toml:"metrics"`
+	// Tracing provides the distributed tracing configuration
+	Tracing *TracingConfig `toml:"tracing"`
 	// NegativeCacheConfigs is a map of NegativeCacheConfigs
 	NegativeCacheConfigs map[string]NegativeCacheConfig `toml:"negative_caches"`
 
@@ -325,6 +330,14 @@ type MetricsConfig struct {
 	ListenAddress string `toml:"listen_address"`
 	// ListenPort is TCP Port from which the Application Metrics are available for pulling at /metrics
 	ListenPort int `toml:"listen_port"`
+}
+
+// Tracing provides the distributed tracing configuration
+type TracingConfig struct {
+	// Implementation is the particular implementation to use
+	Implementation string `toml:"tracer_implemetation"`
+	// CollectorEndpoint is the URL of the trace collector it MUST be of Implementation implementation
+	CollectorEndpoint string `toml:"tracing_collector"`
 }
 
 // NegativeCacheConfig is a collection of response codes and their TTLs

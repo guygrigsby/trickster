@@ -26,6 +26,47 @@ import (
 	"go.opentelemetry.io/otel/plugin/httptrace"
 )
 
+const (
+	MiddlewareSpanName = "trickster-middleware-span"
+	RequestIDKey       = "trickster-internal-id"
+)
+
+const (
+	// Trace implementation enum
+	StdTracerImplementation TracerImplementation = iota
+
+	// New Implemetations go here
+
+	JaegerTracer
+)
+
+type TracerImplementation int
+
+func (t TracerImplementation) String() string {
+	names := []string{
+		"Jaeger",
+		"StdOut",
+	}
+	if t < StdTracerImplementation || t > JaegerTracer {
+		return "unknown-tracer"
+	}
+	return names[t]
+}
+
+func SetTracer(t TracerImplementation) error {
+
+	switch t {
+	case StdTracerImplementation:
+		return setStdOutTracer()
+	case JaegerTracer:
+		return setJaegerTracer()
+	default:
+
+		return setStdOutTracer()
+	}
+
+}
+
 // Name returns the tracer name for this application
 func Name() string {
 	return fmt.Sprintf("%s/%s", runtime.ApplicationName, runtime.ApplicationVersion)

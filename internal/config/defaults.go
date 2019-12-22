@@ -24,6 +24,8 @@ const (
 	defaultMetricsListenPort    = 8082
 	defaultMetricsListenAddress = ""
 
+	defaultTracerImplemetation = 0
+
 	defaultCacheType        = "memory"
 	defaultCacheTypeID      = CacheTypeMemory
 	defaultCacheCompression = true
