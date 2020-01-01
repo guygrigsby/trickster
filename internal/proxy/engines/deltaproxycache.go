@@ -36,7 +36,7 @@ import (
 // requests the gaps from the origin server and returns the reconstituted dataset to the downstream request
 // while caching the results for subsequent requests of the same data
 func DeltaProxyCacheRequest(r *model.Request, w http.ResponseWriter, client model.Client) {
-	_, span := tracing.SpanFromContext(r.ClientRequest.Context(), r.HandlerName, "DeltaProxyCacheRequest")
+	ctx, span := tracing.NewSpan(r.ClientRequest.Context(), r.HandlerName, "DeltaProxyCacheRequest")
 	defer func() {
 
 		span.End()
@@ -101,6 +101,10 @@ func DeltaProxyCacheRequest(r *model.Request, w http.ResponseWriter, client mode
 
 	coReq := GetRequestCachingPolicy(r.Headers)
 	if coReq.NoCache {
+		span.AddEvent(
+			ctx,
+			"Not Caching",
+		)
 		cacheStatus = tc.LookupStatusPurge
 		cache.Remove(key)
 		cts, doc, elapsed, err = fetchTimeseries(r, client)
@@ -110,15 +114,19 @@ func DeltaProxyCacheRequest(r *model.Request, w http.ResponseWriter, client mode
 			return // fetchTimeseries logs the error
 		}
 	} else {
-		doc, err = QueryCache(cache, key)
+
+		doc, err = QueryCache(r.ClientRequest.Context(), cache, key)
 		if err != nil {
+
 			cts, doc, elapsed, err = fetchTimeseries(r, client)
 			if err != nil {
+
 				recordDPCResult(r, tc.LookupStatusProxyError, doc.StatusCode, r.URL.Path, "", elapsed.Seconds(), nil, doc.Headers)
 				Respond(w, doc.StatusCode, doc.Headers, doc.Body)
 				return // fetchTimeseries logs the error
 			}
 		} else {
+
 			// Load the Cached Timeseries
 			cts, err = client.UnmarshalTimeseries(doc.Body)
 			if err != nil {
@@ -150,6 +158,7 @@ func DeltaProxyCacheRequest(r *model.Request, w http.ResponseWriter, client mode
 				}
 				cacheStatus = tc.LookupStatusPartialHit
 			}
+
 		}
 	}
 
@@ -223,11 +232,14 @@ func DeltaProxyCacheRequest(r *model.Request, w http.ResponseWriter, client mode
 
 	var hasFastForwardData bool
 	var ffts timeseries.Timeseries
+
 	// Only fast forward if configured and the user request is for the absolute latest datapoint
 	if (!r.FastForwardDisable) && (trq.Extent.End.Equal(normalizedNow.Extent.End)) && ffURL.Scheme != "" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			_, ffspan := tracing.NewSpan(r.ClientRequest.Context(), r.HandlerName, "DeltaProxyCacheRequest")
+
 			req := r.Copy()
 			req.URL = ffURL
 			body, resp, isHit := FetchViaObjectProxyCache(req, client, oc.FastForwardPath, true)
@@ -249,6 +261,7 @@ func DeltaProxyCacheRequest(r *model.Request, w http.ResponseWriter, client mode
 			} else {
 				ffStatus = "err"
 			}
+			ffspan.End()
 		}()
 	}
 

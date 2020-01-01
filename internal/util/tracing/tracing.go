@@ -113,7 +113,7 @@ func SetTracer(t TracerImplementation, collectorURL string) (func(), error) {
 	}
 
 }
-func SpanFromContext(ctx context.Context, tracerName string, spanName string) (context.Context, trace.Span) {
+func NewSpan(ctx context.Context, tracerName string, spanName string) (context.Context, trace.Span) {
 	tr := global.TraceProvider().Tracer(tracerName)
 
 	attrs := ctx.Value(attrKey).([]core.KeyValue)
@@ -125,8 +125,29 @@ func SpanFromContext(ctx context.Context, tracerName string, spanName string) (c
 		trace.WithAttributes(attrs...),
 		trace.ChildOf(spanCtx),
 	)
+	if span == nil {
+		// Just in case
+		span = trace.NoopSpan{}
+	}
 	return ctx, span
 
+}
+
+type currentSpanKeyType struct{}
+
+var (
+	currentSpanKey = &currentSpanKeyType{}
+)
+
+func ContextWithSpan(ctx context.Context, span trace.Span) context.Context {
+	return context.WithValue(ctx, currentSpanKey, span)
+}
+
+func SpanFromContext(ctx context.Context) trace.Span {
+	if span, has := ctx.Value(currentSpanKey).(trace.Span); has {
+		return span
+	}
+	return trace.NoopSpan{}
 }
 func PrepareRequest(r *http.Request, tracerName string, spanName string) (*http.Request, trace.Span) {
 

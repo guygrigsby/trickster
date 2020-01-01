@@ -25,6 +25,7 @@ import (
 	"github.com/Comcast/trickster/internal/proxy/model"
 	"github.com/Comcast/trickster/internal/util/context"
 	"github.com/Comcast/trickster/internal/util/log"
+	"github.com/Comcast/trickster/internal/util/tracing"
 	"github.com/Comcast/trickster/pkg/locks"
 )
 
@@ -41,6 +42,12 @@ func SequentialObjectProxyCacheRequest(r *model.Request, w http.ResponseWriter, 
 
 // FetchViaObjectProxyCache Fetches an object from Cache or Origin (on miss), writes the object to the cache, and returns the object to the caller
 func FetchViaObjectProxyCache(r *model.Request, client model.Client, apc *config.PathConfig, noLock bool) ([]byte, *http.Response, bool) {
+	_, span := tracing.NewSpan(r.ClientRequest.Context(), r.HandlerName, "FetchViaObjectProxyCache")
+	defer func() {
+
+		span.End()
+
+	}()
 
 	oc := context.OriginConfig(r.ClientRequest.Context())
 	cache := context.CacheClient(r.ClientRequest.Context())
@@ -79,7 +86,7 @@ func FetchViaObjectProxyCache(r *model.Request, client model.Client, apc *config
 
 	var cacheStatus = tc.LookupStatusKeyMiss
 
-	d, err := QueryCache(cache, key)
+	d, err := QueryCache(r.ClientRequest.Context(), cache, key)
 	if err == nil {
 		d.CachingPolicy.IsFresh = !d.CachingPolicy.LocalDate.Add(time.Duration(d.CachingPolicy.FreshnessLifetime) * time.Second).Before(time.Now())
 		if !d.CachingPolicy.IsFresh {
@@ -230,7 +237,7 @@ func FetchAndRespondViaObjectProxyCache(r *model.Request, w http.ResponseWriter,
 		defer locks.Release(key)
 	}
 
-	d, err := QueryCache(cache, key)
+	d, err := QueryCache(r.ClientRequest.Context(), cache, key)
 	if err == nil {
 		d.CachingPolicy.IsFresh = !d.CachingPolicy.LocalDate.Add(time.Duration(d.CachingPolicy.FreshnessLifetime) * time.Second).Before(time.Now())
 		if !d.CachingPolicy.IsFresh {

@@ -62,7 +62,7 @@ func setup(routes map[string]http.HandlerFunc) *mux.Router {
 func TestTrace(t *testing.T) {
 	routes := map[string]http.HandlerFunc{
 		"/test": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx, span := SpanFromContext(r.Context(), "tracername", "test-span-name")
+			ctx, span := NewSpan(r.Context(), "tracername", "test-span-name")
 			defer span.End()
 			span.AddEvent(ctx, "", key.String("server", "add-green-chili"))
 			fmt.Println("REQUEST")

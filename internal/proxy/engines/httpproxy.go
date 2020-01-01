@@ -38,6 +38,7 @@ import (
 	"go.opentelemetry.io/otel/api/core"
 	"go.opentelemetry.io/otel/api/key"
 	"go.opentelemetry.io/otel/api/trace"
+	othttptrace "go.opentelemetry.io/otel/plugin/httptrace"
 )
 
 // Reqs is for Progressive Collapsed Forwarding
@@ -49,16 +50,10 @@ const HTTPBlockSize = 32 * 1024
 // ProxyRequest proxies an inbound request to its corresponding upstream origin with no caching features
 func ProxyRequest(r *model.Request, w http.ResponseWriter) *http.Response {
 	start := time.Now()
-	ctx, span := tracing.SpanFromContext(r.ClientRequest.Context(), r.HandlerName, "ProxyRequest")
-	span.AddEventWithTimestamp(
-		ctx,
-		start,
-		"Proxying request",
-	)
+	_, span := tracing.NewSpan(r.ClientRequest.Context(), r.HandlerName, "ProxyRequest")
 	defer func() {
 
-		then := time.Now()
-		span.End(trace.WithEndTime(then))
+		span.End()
 	}()
 
 	pc := context.PathConfig(r.ClientRequest.Context())
@@ -123,7 +118,7 @@ func PrepareResponseWriter(w http.ResponseWriter, code int, header http.Header) 
 // provide the response data, the response object and the content length.
 // Used in Fetch.
 func PrepareFetchReader(r *model.Request) (io.ReadCloser, *http.Response, int) {
-	ctx, span := tracing.SpanFromContext(r.ClientRequest.Context(), r.HandlerName, "PrepareFetchReader")
+	ctx, span := tracing.NewSpan(r.ClientRequest.Context(), r.HandlerName, "PrepareFetchReader")
 	defer func() {
 
 		span.End(trace.WithEndTime(time.Now()))
@@ -193,9 +188,12 @@ func PrepareFetchReader(r *model.Request) (io.ReadCloser, *http.Response, int) {
 	req.Header = r.Headers
 	req.URL = r.URL
 
-	doCtx, doSpan := tracing.SpanFromContext(ctx, r.HandlerName, "PrepareFetchReader.http.do")
-	resp, err := r.HTTPClient.Do(req)
+	doCtx, doSpan := tracing.NewSpan(ctx, r.HandlerName, "PrepareFetchReader.http.do")
 
+	ctx, req = othttptrace.W3C(ctx, req)
+	othttptrace.Inject(ctx, req)
+
+	resp, err := r.HTTPClient.Do(req)
 	if err != nil {
 		doSpan.AddEvent(doCtx, err.Error())
 		log.Error("error downloading url", log.Pairs{"url": r.URL.String(), "detail": err.Error()})
@@ -206,6 +204,7 @@ func PrepareFetchReader(r *model.Request) (io.ReadCloser, *http.Response, int) {
 		if pc != nil {
 			headers.UpdateHeaders(resp.Header, pc.ResponseHeaders)
 		}
+		doSpan.End(trace.WithEndTime(time.Now()))
 		return nil, resp, 0
 	}
 	doSpan.End(trace.WithEndTime(time.Now()))

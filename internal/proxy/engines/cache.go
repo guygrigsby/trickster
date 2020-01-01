@@ -14,6 +14,7 @@
 package engines
 
 import (
+	"context"
 	"time"
 
 	"github.com/golang/snappy"
@@ -21,10 +22,17 @@ import (
 	"github.com/Comcast/trickster/internal/cache"
 	"github.com/Comcast/trickster/internal/proxy/model"
 	"github.com/Comcast/trickster/internal/util/log"
+	"github.com/Comcast/trickster/internal/util/tracing"
 )
 
 // QueryCache queries the cache for an HTTPDocument and returns it
-func QueryCache(c cache.Cache, key string) (*model.HTTPDocument, error) {
+func QueryCache(ctx context.Context, c cache.Cache, key string) (*model.HTTPDocument, error) {
+	ctx, span := tracing.NewSpan(ctx, "QueryCache", key)
+	defer func() {
+
+		span.End()
+
+	}()
 
 	inflate := c.Configuration().Compression
 	if inflate {
