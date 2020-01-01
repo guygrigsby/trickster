@@ -40,7 +40,7 @@ func setup(routes map[string]http.HandlerFunc) *mux.Router {
 	router.Use(func(next http.Handler) http.Handler {
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			r, span := PrepareRequest(r, "tracername", "middleware-span-name")
+			r, span := PrepareRequest(r, "middleware-span-name")
 			defer span.End()
 			span.AddEvent(r.Context(), "", key.String("internal-id", "trickster"))
 
@@ -62,7 +62,7 @@ func setup(routes map[string]http.HandlerFunc) *mux.Router {
 func TestTrace(t *testing.T) {
 	routes := map[string]http.HandlerFunc{
 		"/test": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx, span := SpanFromContext(r.Context(), "test-span-name")
+			ctx, span := SpanFromContext(r.Context(), "tracername", "test-span-name")
 			defer span.End()
 			span.AddEvent(ctx, "", key.String("server", "add-green-chili"))
 			fmt.Println("REQUEST")

@@ -20,8 +20,6 @@ import (
 
 	"github.com/Comcast/trickster/internal/proxy/engines"
 	"github.com/Comcast/trickster/internal/proxy/model"
-	"github.com/Comcast/trickster/internal/util/tracing"
-	"go.opentelemetry.io/otel/api/trace"
 )
 
 // QueryHandler handles calls to /query (for instantaneous values)
@@ -36,18 +34,6 @@ func (c *Client) QueryHandler(w http.ResponseWriter, r *http.Request) {
 			params.Set(upTime, strconv.FormatInt(time.Unix(i, 0).Truncate(time.Second*time.Duration(15)).Unix(), 10))
 		}
 	}
-
-	ctx, span := tracing.SpanFromContext(r.Context(), "PrometheusClient", "ObjectProxyCacheRequest")
-	span.AddEventWithTimestamp(
-		ctx,
-		time.Now(),
-		"Proxying request",
-	)
-	defer func() {
-
-		then := time.Now()
-		span.End(trace.WithEndTime(then))
-	}()
 
 	engines.ObjectProxyCacheRequest(
 		model.NewRequest("QueryHandler", r.Method, u, r.Header, c.config.Timeout, r, c.webClient),

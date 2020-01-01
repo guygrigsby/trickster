@@ -56,9 +56,6 @@ var (
 	}
 
 	once sync.Once
-
-	tracerName string //TODO this is dirty. Make it better
-
 )
 
 // Init initializes tracing
@@ -131,7 +128,7 @@ func SpanFromContext(ctx context.Context, tracerName string, spanName string) (c
 	return ctx, span
 
 }
-func PrepareRequest(r *http.Request, spanName string) (*http.Request, trace.Span) {
+func PrepareRequest(r *http.Request, tracerName string, spanName string) (*http.Request, trace.Span) {
 
 	attrs, entries, spanCtx := httptrace.Extract(r.Context(), r)
 
