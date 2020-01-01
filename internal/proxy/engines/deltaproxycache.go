@@ -28,6 +28,7 @@ import (
 	"github.com/Comcast/trickster/internal/util/context"
 	"github.com/Comcast/trickster/internal/util/log"
 	"github.com/Comcast/trickster/internal/util/metrics"
+	"github.com/Comcast/trickster/internal/util/tracing"
 	"github.com/Comcast/trickster/pkg/locks"
 )
 
@@ -35,6 +36,11 @@ import (
 // requests the gaps from the origin server and returns the reconstituted dataset to the downstream request
 // while caching the results for subsequent requests of the same data
 func DeltaProxyCacheRequest(r *model.Request, w http.ResponseWriter, client model.Client) {
+	_, span := tracing.SpanFromContext(r.ClientRequest.Context(), r.HandlerName, "DeltaProxyCacheRequest")
+	defer func() {
+
+		span.End()
+	}()
 
 	oc := context.OriginConfig(r.ClientRequest.Context())
 	cache := context.CacheClient(r.ClientRequest.Context())
