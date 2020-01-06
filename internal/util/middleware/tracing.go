@@ -1,45 +1,43 @@
+/**
+* Copyright 2018 Comcast Cable Communications Management, LLC
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+* http://www.apache.org/licenses/LICENSE-2.0
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+ */
+
 package middleware
 
 import (
-	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/Comcast/trickster/internal/config"
 	"github.com/Comcast/trickster/internal/util/tracing"
 	"github.com/gorilla/mux"
-	"go.opentelemetry.io/otel/api/key"
-	"go.opentelemetry.io/otel/api/trace"
+	kv "go.opentelemetry.io/otel/api/key"
 )
 
 func Trace(originName, originType string, paths map[string]*config.PathConfig) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-			fmt.Printf("%+v\n", paths)
-
-			tracerName := "Request"
-
-			pathNoOrigin := strings.Replace(r.URL.Path, fmt.Sprintf("/%s", originName), "", 1)
-
-			cfg, ok := paths[pathNoOrigin]
-			if ok {
-				tracerName = cfg.HandlerName
-			}
-
-			r, span := tracing.PrepareRequest(r, tracerName, originName)
+			r, span := tracing.PrepareRequest(r, r.Host) // TODO Host is not the best tracer name. Something Request level would be better, but paths are already in the trace
 			defer func() {
 
-				then := time.Now()
-				span.End(trace.WithEndTime(then))
+				span.End()
 			}()
 			span.AddEventWithTimestamp(
 				r.Context(),
 				time.Now(),
-				"Starting Parent Span",
-				key.String("originName", originName),
-				key.String("originType", originType),
+				"Parent Span Initialized",
+				kv.String("originName", originName),
+				kv.String("originType", originType),
 			)
 
 			next.ServeHTTP(w, r)

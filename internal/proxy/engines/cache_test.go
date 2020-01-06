@@ -43,7 +43,7 @@ func TestQueryCache(t *testing.T) {
 	resp.StatusCode = 200
 	d := model.DocumentFromHTTPResponse(resp, []byte(expected), nil)
 
-	err = WriteCache(cache, "testKey", d, time.Duration(60)*time.Second)
+	_, err = WriteCache(cache, "testKey", d, time.Duration(60)*time.Second)
 	if err != nil {
 		t.Error(err)
 	}

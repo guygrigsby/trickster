@@ -15,11 +15,11 @@ package engines
 
 import (
 	"bytes"
+	gocontext "context"
 	"io"
 	"io/ioutil"
 	"math"
 	"net/http"
-	"net/http/httptrace"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,9 +35,6 @@ import (
 	"github.com/Comcast/trickster/internal/util/log"
 	"github.com/Comcast/trickster/internal/util/metrics"
 	"github.com/Comcast/trickster/internal/util/tracing"
-	"go.opentelemetry.io/otel/api/core"
-	"go.opentelemetry.io/otel/api/key"
-	"go.opentelemetry.io/otel/api/trace"
 	othttptrace "go.opentelemetry.io/otel/plugin/httptrace"
 )
 
@@ -50,11 +47,13 @@ const HTTPBlockSize = 32 * 1024
 // ProxyRequest proxies an inbound request to its corresponding upstream origin with no caching features
 func ProxyRequest(r *model.Request, w http.ResponseWriter) *http.Response {
 	start := time.Now()
-	_, span := tracing.NewSpan(r.ClientRequest.Context(), r.HandlerName, "ProxyRequest")
+	ctx, span := tracing.NewChildSpan(r.ClientRequest.Context(), "ProxyRequest")
 	defer func() {
 
 		span.End()
 	}()
+
+	r.ClientRequest = r.ClientRequest.WithContext(ctx)
 
 	pc := context.PathConfig(r.ClientRequest.Context())
 	oc := context.OriginConfig(r.ClientRequest.Context())
@@ -118,10 +117,10 @@ func PrepareResponseWriter(w http.ResponseWriter, code int, header http.Header) 
 // provide the response data, the response object and the content length.
 // Used in Fetch.
 func PrepareFetchReader(r *model.Request) (io.ReadCloser, *http.Response, int) {
-	ctx, span := tracing.NewSpan(r.ClientRequest.Context(), r.HandlerName, "PrepareFetchReader")
+	ctx, span := tracing.NewChildSpan(r.ClientRequest.Context(), "PrepareFetchReader")
 	defer func() {
 
-		span.End(trace.WithEndTime(time.Now()))
+		span.End()
 	}()
 
 	pc := context.PathConfig(r.ClientRequest.Context())
@@ -141,61 +140,34 @@ func PrepareFetchReader(r *model.Request) (io.ReadCloser, *http.Response, int) {
 	}
 
 	var err error
-	req, err := http.NewRequest(r.ClientRequest.Method, r.URL.String(), r.ClientRequest.Body)
+	req, err := http.NewRequestWithContext(ctx, r.ClientRequest.Method, r.URL.String(), r.ClientRequest.Body)
 	if err != nil {
 
 		return nil, nil, 0
 	}
 
-	// TODO recording DNS is not a completely arbitrary choice here, but there are a lot more options that we need to explore.
-	originKey := key.New("trickster.proxy.origintype")
-	hTrace := &httptrace.ClientTrace{
-
-		DNSStart: func(dnsInfo httptrace.DNSStartInfo) {
-			hostKey := key.New("trickster.proxy.dns.host")
-
-			attrs := []core.KeyValue{
-				hostKey.String(dnsInfo.Host),
-				originKey.String(oc.OriginType),
-			}
-			span.AddEventWithTimestamp(
-				ctx,
-				time.Now(),
-				"DNS start for proxied request",
-				attrs...,
-			)
-
-		},
-
-		DNSDone: func(dnsInfo httptrace.DNSDoneInfo) {
-			errKey := key.New("trickster.proxy.dns.err")
-
-			attrs := []core.KeyValue{
-				errKey.String(dnsInfo.Err.Error()),
-				originKey.String(oc.OriginType),
-			}
-			span.AddEventWithTimestamp(
-				ctx,
-				time.Now(),
-				"DNS complete for proxied request",
-				attrs...,
-			)
-		},
-	}
-
-	req = req.WithContext(httptrace.WithClientTrace(req.Context(), hTrace))
-
 	req.Header = r.Headers
 	req.URL = r.URL
 
-	doCtx, doSpan := tracing.NewSpan(ctx, r.HandlerName, "PrepareFetchReader.http.do")
+	var resp *http.Response
 
-	ctx, req = othttptrace.W3C(ctx, req)
-	othttptrace.Inject(ctx, req)
+	tr := tracing.GlobalTracer(ctx)
+	err = tr.WithSpan(ctx, "Proxying Request",
+		func(ctx gocontext.Context) error {
+			var (
+				err error
+			)
 
-	resp, err := r.HTTPClient.Do(req)
+			// Processing traces for proxies
+			// https://www.w3.org/TR/trace-context-1/#alternative-processing
+			ctx, req := othttptrace.W3C(ctx, req)
+			othttptrace.Inject(ctx, req)
+			resp, err = r.HTTPClient.Do(req)
+			return err
+
+		})
+
 	if err != nil {
-		doSpan.AddEvent(doCtx, err.Error())
 		log.Error("error downloading url", log.Pairs{"url": r.URL.String(), "detail": err.Error()})
 		// if there is an err and the response is nil, the server could not be reached; make a 502 for the downstream response
 		if resp == nil {
@@ -204,10 +176,8 @@ func PrepareFetchReader(r *model.Request) (io.ReadCloser, *http.Response, int) {
 		if pc != nil {
 			headers.UpdateHeaders(resp.Header, pc.ResponseHeaders)
 		}
-		doSpan.End(trace.WithEndTime(time.Now()))
 		return nil, resp, 0
 	}
-	doSpan.End(trace.WithEndTime(time.Now()))
 
 	originalLen, _ := strconv.Atoi(resp.Header.Get("Content-Length"))
 	rc = resp.Body

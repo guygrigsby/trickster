@@ -42,15 +42,15 @@ func SequentialObjectProxyCacheRequest(r *model.Request, w http.ResponseWriter, 
 
 // FetchViaObjectProxyCache Fetches an object from Cache or Origin (on miss), writes the object to the cache, and returns the object to the caller
 func FetchViaObjectProxyCache(r *model.Request, client model.Client, apc *config.PathConfig, noLock bool) ([]byte, *http.Response, bool) {
-	_, span := tracing.NewSpan(r.ClientRequest.Context(), r.HandlerName, "FetchViaObjectProxyCache")
+	ctx, span := tracing.NewChildSpan(r.ClientRequest.Context(), "FetchViaObjectProxyCache")
 	defer func() {
 
 		span.End()
 
 	}()
 
-	oc := context.OriginConfig(r.ClientRequest.Context())
-	cache := context.CacheClient(r.ClientRequest.Context())
+	oc := context.OriginConfig(ctx)
+	cache := context.CacheClient(ctx)
 
 	key := oc.CacheKeyPrefix + "." + DeriveCacheKey(r, apc, "")
 
@@ -86,7 +86,7 @@ func FetchViaObjectProxyCache(r *model.Request, client model.Client, apc *config
 
 	var cacheStatus = tc.LookupStatusKeyMiss
 
-	d, err := QueryCache(r.ClientRequest.Context(), cache, key)
+	d, err := QueryCache(ctx, cache, key)
 	if err == nil {
 		d.CachingPolicy.IsFresh = !d.CachingPolicy.LocalDate.Add(time.Duration(d.CachingPolicy.FreshnessLifetime) * time.Second).Before(time.Now())
 		if !d.CachingPolicy.IsFresh {
@@ -171,7 +171,7 @@ func FetchViaObjectProxyCache(r *model.Request, client model.Client, apc *config
 		if ttl > oc.MaxTTL {
 			ttl = oc.MaxTTL
 		}
-		WriteCache(cache, key, d, ttl)
+		WriteCache(ctx, cache, key, d, ttl)
 	} else {
 		body = d.Body
 		resp = &http.Response{
@@ -193,9 +193,18 @@ func FetchViaObjectProxyCache(r *model.Request, client model.Client, apc *config
 // FetchAndRespondViaObjectProxyCache Fetches an object from Cache or Origin (on miss), writes the object to the cache, and returns the object to the caller
 func FetchAndRespondViaObjectProxyCache(r *model.Request, w http.ResponseWriter, client model.Client, noLock bool) {
 
-	oc := context.OriginConfig(r.ClientRequest.Context())
-	pc := context.PathConfig(r.ClientRequest.Context())
-	cache := context.CacheClient(r.ClientRequest.Context())
+	ctx, span := tracing.NewChildSpan(r.ClientRequest.Context(), "FetchAndRespondViaObjectProxyCache")
+	defer func() {
+
+		span.End()
+
+	}()
+
+	r.ClientRequest = r.ClientRequest.WithContext(ctx)
+
+	oc := context.OriginConfig(ctx)
+	pc := context.PathConfig(ctx)
+	cache := context.CacheClient(ctx)
 
 	key := oc.Host + "." + DeriveCacheKey(r, pc, "")
 
@@ -237,7 +246,7 @@ func FetchAndRespondViaObjectProxyCache(r *model.Request, w http.ResponseWriter,
 		defer locks.Release(key)
 	}
 
-	d, err := QueryCache(r.ClientRequest.Context(), cache, key)
+	d, err := QueryCache(ctx, cache, key)
 	if err == nil {
 		d.CachingPolicy.IsFresh = !d.CachingPolicy.LocalDate.Add(time.Duration(d.CachingPolicy.FreshnessLifetime) * time.Second).Before(time.Now())
 		if !d.CachingPolicy.IsFresh {
@@ -397,7 +406,7 @@ func FetchAndRespondViaObjectProxyCache(r *model.Request, w http.ResponseWriter,
 		if ttl > oc.MaxTTL {
 			ttl = oc.MaxTTL
 		}
-		WriteCache(cache, key, d, ttl)
+		WriteCache(ctx, cache, key, d, ttl)
 	}
 	return
 }

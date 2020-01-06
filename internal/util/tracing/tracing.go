@@ -20,45 +20,30 @@ import (
 
 	"github.com/Comcast/trickster/internal/config"
 	"github.com/Comcast/trickster/internal/util/log"
-	"go.opentelemetry.io/otel/api/core"
 	"go.opentelemetry.io/otel/api/distributedcontext"
 	"go.opentelemetry.io/otel/api/global"
 	"go.opentelemetry.io/otel/api/trace"
 	"go.opentelemetry.io/otel/plugin/httptrace"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 const (
-	MiddlewareSpanName = "trickster-middleware-span"
-	RequestIDKey       = "trickster-internal-id"
-	ServiceName        = "trickster"
+	RequestIDKey     = "trickster-internal-id"
+	ServiceName      = "trickster"
+	TracestateHeader = "tracestate"
+	TracerName       = "Comcast"
 )
-
-const (
-	// Trace implementation enum
-	StdoutTracerImplementation TracerImplementation = iota
-
-	// New Implemetations go here
-
-	JaegerTracer
-)
-
-type TracerImplementation int
 
 var (
-	tracerImplemetationStrings = []string{
-		"stdout",
-		"jaeger",
+	TraceHeaders = []string{
+		propagation.TraceparentHeader,
+		propagation.CorrelationContextHeader,
+		TracestateHeader,
 	}
-	TracerImplementations = map[string]TracerImplementation{
-
-		tracerImplemetationStrings[StdoutTracerImplementation]: StdoutTracerImplementation,
-		tracerImplemetationStrings[JaegerTracer]:               JaegerTracer,
-	}
-
-	once sync.Once
+	initialize sync.Once
 )
 
-// Init initializes tracing
+// Init initializes tracing and returns a function to flush the tracer. Flush should be called on server shutdown.
 func Init(cfg *config.TracingConfig) func() {
 	log.Debug(
 		"Trace Init",
@@ -87,69 +72,12 @@ func Init(cfg *config.TracingConfig) func() {
 		flusher = fl
 
 	}
-	once.Do(f)
+	initialize.Do(f)
 	return flusher
 }
 
-func (t TracerImplementation) String() string {
-	if t < StdoutTracerImplementation || t > JaegerTracer {
-		return "unknown-tracer"
-	}
-	return tracerImplemetationStrings[t]
-}
-
-func SetTracer(t TracerImplementation, collectorURL string) (func(), error) {
-
-	switch t {
-	case StdoutTracerImplementation:
-
-		return setStdOutTracer()
-	case JaegerTracer:
-
-		return setJaegerTracer(collectorURL)
-	default:
-
-		return setStdOutTracer()
-	}
-
-}
-func NewSpan(ctx context.Context, tracerName string, spanName string) (context.Context, trace.Span) {
-	tr := global.TraceProvider().Tracer(tracerName)
-
-	attrs := ctx.Value(attrKey).([]core.KeyValue)
-	spanCtx := ctx.Value(spanCtxKey).(core.SpanContext)
-
-	ctx, span := tr.Start(
-		ctx,
-		spanName,
-		trace.WithAttributes(attrs...),
-		trace.ChildOf(spanCtx),
-	)
-	if span == nil {
-		// Just in case
-		span = trace.NoopSpan{}
-	}
-	return ctx, span
-
-}
-
-type currentSpanKeyType struct{}
-
-var (
-	currentSpanKey = &currentSpanKeyType{}
-)
-
-func ContextWithSpan(ctx context.Context, span trace.Span) context.Context {
-	return context.WithValue(ctx, currentSpanKey, span)
-}
-
-func SpanFromContext(ctx context.Context) trace.Span {
-	if span, has := ctx.Value(currentSpanKey).(trace.Span); has {
-		return span
-	}
-	return trace.NoopSpan{}
-}
-func PrepareRequest(r *http.Request, tracerName string, spanName string) (*http.Request, trace.Span) {
+// PrepareRequest extracts trace information from the headers of the incoming request. It returns a pointer to the incoming request with the request context updated to include all span and tracing info. It also returns a span with the name "Request" that is meant to be a parent span for all child spans of this request.
+func PrepareRequest(r *http.Request, tracerName string) (*http.Request, trace.Span) {
 
 	attrs, entries, spanCtx := httptrace.Extract(r.Context(), r)
 
@@ -161,26 +89,18 @@ func PrepareRequest(r *http.Request, tracerName string, spanName string) (*http.
 			},
 		),
 	)
-
-	ctx = context.WithValue(ctx, attrKey, attrs)
 	ctx = context.WithValue(ctx, spanCtxKey, spanCtx)
+	ctx = context.WithValue(ctx, attrKey, attrs)
+	ctx = context.WithValue(ctx, tracerNameKey, tracerName)
 
 	tr := global.TraceProvider().Tracer(tracerName)
 
 	ctx, span := tr.Start(
 		ctx,
-		spanName,
+		"Request",
 		trace.WithAttributes(attrs...),
 		trace.ChildOf(spanCtx),
 	)
 
 	return r.WithContext(ctx), span
 }
-
-type ctxSpanType struct{}
-type ctxAttrType struct{}
-
-var (
-	attrKey    = ctxAttrType{}
-	spanCtxKey = &ctxSpanType{}
-)

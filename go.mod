@@ -26,7 +26,6 @@ require (
 	go.opentelemetry.io/otel/exporter/trace/jaeger v0.2.0
 	golang.org/x/net v0.0.0-20191021124707-24d2ffbea1e8
 	golang.org/x/sys v0.0.0-20191020212454-3e7259c5e7c2
-	google.golang.org/grpc v1.24.0
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 )
 

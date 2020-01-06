@@ -36,14 +36,14 @@ import (
 // requests the gaps from the origin server and returns the reconstituted dataset to the downstream request
 // while caching the results for subsequent requests of the same data
 func DeltaProxyCacheRequest(r *model.Request, w http.ResponseWriter, client model.Client) {
-	ctx, span := tracing.NewSpan(r.ClientRequest.Context(), r.HandlerName, "DeltaProxyCacheRequest")
+	ctx, span := tracing.NewChildSpan(r.ClientRequest.Context(), "DeltaProxyCacheRequest")
 	defer func() {
 
 		span.End()
 	}()
 
-	oc := context.OriginConfig(r.ClientRequest.Context())
-	cache := context.CacheClient(r.ClientRequest.Context())
+	oc := context.OriginConfig(ctx)
+	cache := context.CacheClient(ctx)
 	r.FastForwardDisable = oc.FastForwardDisable
 
 	trq, err := client.ParseTimeRangeQuery(r)
@@ -115,7 +115,7 @@ func DeltaProxyCacheRequest(r *model.Request, w http.ResponseWriter, client mode
 		}
 	} else {
 
-		doc, err = QueryCache(r.ClientRequest.Context(), cache, key)
+		doc, err = QueryCache(ctx, cache, key)
 		if err != nil {
 
 			cts, doc, elapsed, err = fetchTimeseries(r, client)
@@ -238,7 +238,6 @@ func DeltaProxyCacheRequest(r *model.Request, w http.ResponseWriter, client mode
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, ffspan := tracing.NewSpan(r.ClientRequest.Context(), r.HandlerName, "DeltaProxyCacheRequest")
 
 			req := r.Copy()
 			req.URL = ffURL
@@ -261,7 +260,6 @@ func DeltaProxyCacheRequest(r *model.Request, w http.ResponseWriter, client mode
 			} else {
 				ffStatus = "err"
 			}
-			ffspan.End()
 		}()
 	}
 
@@ -322,7 +320,7 @@ func DeltaProxyCacheRequest(r *model.Request, w http.ResponseWriter, client mode
 					return
 				}
 				doc.Body = cdata
-				WriteCache(cache, key, doc, oc.TimeseriesTTL)
+				WriteCache(ctx, cache, key, doc, oc.TimeseriesTTL)
 			}
 		}()
 	}

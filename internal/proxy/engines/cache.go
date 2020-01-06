@@ -23,11 +23,13 @@ import (
 	"github.com/Comcast/trickster/internal/proxy/model"
 	"github.com/Comcast/trickster/internal/util/log"
 	"github.com/Comcast/trickster/internal/util/tracing"
+
+	kv "go.opentelemetry.io/otel/api/key"
 )
 
 // QueryCache queries the cache for an HTTPDocument and returns it
 func QueryCache(ctx context.Context, c cache.Cache, key string) (*model.HTTPDocument, error) {
-	ctx, span := tracing.NewSpan(ctx, "QueryCache", key)
+	ctx, span := tracing.NewChildSpan(ctx, "QueryCache")
 	defer func() {
 
 		span.End()
@@ -42,8 +44,18 @@ func QueryCache(ctx context.Context, c cache.Cache, key string) (*model.HTTPDocu
 	d := &model.HTTPDocument{}
 	bytes, err := c.Retrieve(key, true)
 	if err != nil {
+		span.AddEvent(
+			ctx,
+			"Cache Miss",
+			kv.String("Message", err.Error()),
+		)
 		return d, err
 	}
+	span.AddEvent(
+		ctx,
+		"Cache Hit",
+		kv.Int("bytesRead", len(bytes)),
+	)
 
 	if inflate {
 		log.Debug("decompressing cached data", log.Pairs{"cacheKey": key})
@@ -57,13 +69,34 @@ func QueryCache(ctx context.Context, c cache.Cache, key string) (*model.HTTPDocu
 }
 
 // WriteCache writes an HTTPDocument to the cache
-func WriteCache(c cache.Cache, key string, d *model.HTTPDocument, ttl time.Duration) error {
+func WriteCache(ctx context.Context, c cache.Cache, key string, d *model.HTTPDocument, ttl time.Duration) error {
+	ctx, span := tracing.NewChildSpan(ctx, "WriteCache")
+	defer func() {
+
+		span.End()
+
+	}()
 	// Delete Date Header, http.ReponseWriter will insert as Now() on cache retrieval
 	delete(d.Headers, "Date")
+	// Don't cache trace headers
+	for _, h := range tracing.TraceHeaders {
+		// noop if missing
+		delete(d.Headers, h)
+	}
 	bytes, err := d.MarshalMsg(nil)
 	if err != nil {
+		span.AddEvent(
+			ctx,
+			"Cache Write Failure",
+			kv.String("Message", err.Error()),
+		)
 		return err
 	}
+	span.AddEvent(
+		ctx,
+		"Cache Write",
+		kv.Int("bytesWritten", len(bytes)),
+	)
 
 	if c.Configuration().Compression {
 		key += ".sz"

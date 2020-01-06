@@ -1,3 +1,16 @@
+/**
+* Copyright 2018 Comcast Cable Communications Management, LLC
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+* http://www.apache.org/licenses/LICENSE-2.0
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+ */
+
 package tracing
 
 import (
@@ -62,7 +75,7 @@ func setup(routes map[string]http.HandlerFunc) *mux.Router {
 func TestTrace(t *testing.T) {
 	routes := map[string]http.HandlerFunc{
 		"/test": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx, span := NewSpan(r.Context(), "tracername", "test-span-name")
+			ctx, span := NewChildSpan(r.Context(), "test-span-name")
 			defer span.End()
 			span.AddEvent(ctx, "", key.String("server", "add-green-chili"))
 			fmt.Println("REQUEST")
