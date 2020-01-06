@@ -15,12 +15,10 @@ package middleware
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/Comcast/trickster/internal/config"
 	"github.com/Comcast/trickster/internal/util/tracing"
 	"github.com/gorilla/mux"
-	kv "go.opentelemetry.io/otel/api/key"
 )
 
 func Trace(originName, originType string, paths map[string]*config.PathConfig) mux.MiddlewareFunc {
@@ -32,13 +30,6 @@ func Trace(originName, originType string, paths map[string]*config.PathConfig) m
 
 				span.End()
 			}()
-			span.AddEventWithTimestamp(
-				r.Context(),
-				time.Now(),
-				"Parent Span Initialized",
-				kv.String("originName", originName),
-				kv.String("originType", originType),
-			)
 
 			next.ServeHTTP(w, r)
 		})
